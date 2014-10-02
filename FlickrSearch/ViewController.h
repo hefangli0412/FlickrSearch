@@ -7,11 +7,14 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <MessageUI/MessageUI.h>
 
 @interface ViewController : UIViewController
 <
+UITextFieldDelegate,
+UICollectionViewDataSource,
 UICollectionViewDelegateFlowLayout,
-UICollectionViewDataSource
+MFMailComposeViewControllerDelegate
 >
 
 @end

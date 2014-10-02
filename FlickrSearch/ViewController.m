@@ -10,6 +10,8 @@
 #import "Flickr.h"
 #import "FlickrPhoto.h"
 #import "FlickrPhotoCell.h"
+#import "FlickrPhotoHeaderView.h"
+#import "FlickrPhotoViewController.h"
 
 @interface ViewController ()
 @property(nonatomic, weak) IBOutlet UIToolbar *toolbar;
@@ -20,6 +22,8 @@
 @property(nonatomic, strong) NSMutableDictionary *searchResults;
 @property(nonatomic, strong) NSMutableArray *searches;
 @property(nonatomic, strong) Flickr *flickr;
+@property (nonatomic) BOOL sharing;
+@property(nonatomic, strong) NSMutableArray *selectedPhotos;
 
 - (IBAction)shareButtonTapped:(id)sender;
 @end
@@ -47,12 +51,58 @@
     self.searchResults = [@{} mutableCopy];
     self.flickr = [[Flickr alloc] init];
     
-//    [self.collectionView registerClass:[UICollectionViewCell class] forCellWithReuseIdentifier:@"FlickrCell"];
+    self.selectedPhotos = [@[] mutableCopy];
+
+}
+
+-(void)showMailComposerAndSend {
+    if ([MFMailComposeViewController canSendMail]) {
+        MFMailComposeViewController *mailer = [[MFMailComposeViewController alloc] init];
+        mailer.mailComposeDelegate = self;
+        [mailer setSubject:@"Check out these Flickr Photos"];
+        NSMutableString *emailBody = [NSMutableString string];
+        for(FlickrPhoto *flickrPhoto in self.selectedPhotos)
+        {
+            NSString *url = [Flickr flickrPhotoURLForFlickrPhoto: flickrPhoto size:@"m"];
+            [emailBody appendFormat:@"<div><img src='%@'></div><br>",url];
+        }
+        [mailer setMessageBody:emailBody isHTML:YES];
+        [self presentViewController:mailer animated:YES completion:^{}];
+    } else {
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Mail Failure" message:@"Your device doesn't support in-app email" delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
+        [alert show];
+    }
 }
 
 - (IBAction)shareButtonTapped:(id)sender
 {
+    UIBarButtonItem *shareButton = (UIBarButtonItem *)sender;
+    // 1
+    if (!self.sharing) {
+        self.sharing = YES;
+        [shareButton setStyle:UIBarButtonItemStyleDone];
+        [shareButton setTitle:@"Done"];
+        [self.collectionView setAllowsMultipleSelection:YES];
+    } else {
+        // 2
+        self.sharing = NO;
+        [shareButton setStyle:UIBarButtonItemStyleBordered];
+        [shareButton setTitle:@"Share"];
+        [self.collectionView setAllowsMultipleSelection:NO];
+        // 3
+        if ([self.selectedPhotos count] > 0) {
+            [self showMailComposerAndSend];
+        }
+        // 4
+        for(NSIndexPath *indexPath in self.collectionView.indexPathsForSelectedItems) {
+            [self.collectionView deselectItemAtIndexPath:indexPath animated:NO];
+        }
+        [self.selectedPhotos removeAllObjects];
+    }
+}
 
+- (void)mailComposeController: (MFMailComposeViewController *)controller didFinishWithResult:(MFMailComposeResult)result error:(NSError *)error {
+    [controller dismissViewControllerAnimated:YES completion:^{}];
 }
 
 #pragma mark - UITextFieldDelegate methods
@@ -97,10 +147,30 @@
 #pragma mark - UICollectionViewDelegate
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
 {
-    // TODO: Select Item
+    if (!self.sharing) {
+        NSString *searchTerm = self.searches[indexPath.section];
+        FlickrPhoto *photo = self.searchResults[searchTerm][indexPath.row];
+        [self performSegueWithIdentifier:@"ShowFlickrPhoto"
+                                  sender:photo];
+        [self.collectionView
+         deselectItemAtIndexPath:indexPath animated:YES];
+    } else {
+        NSString *searchTerm = self.searches[indexPath.section];
+        FlickrPhoto *photo = self.searchResults[searchTerm][indexPath.row];
+        [self.selectedPhotos addObject:photo];    }
 }
 - (void)collectionView:(UICollectionView *)collectionView didDeselectItemAtIndexPath:(NSIndexPath *)indexPath {
-    // TODO: Deselect item
+    if (self.sharing) {
+        NSString *searchTerm = self.searches[indexPath.section];
+        FlickrPhoto *photo = self.searchResults[searchTerm][indexPath.row];
+        [self.selectedPhotos removeObject:photo];
+    }}
+
+- (UICollectionReusableView *)collectionView: (UICollectionView *)collectionView viewForSupplementaryElementOfKind:(NSString *)kind atIndexPath:(NSIndexPath *)indexPath {
+    FlickrPhotoHeaderView *headerView = [collectionView dequeueReusableSupplementaryViewOfKind:
+                                         UICollectionElementKindSectionHeader withReuseIdentifier:@"FlickrPhotoHeaderView" forIndexPath:indexPath];
+    NSString *searchTerm = self.searches[indexPath.section]; [headerView setSearchText:searchTerm];
+    return headerView;
 }
 
 #pragma mark – UICollectionViewDelegateFlowLayout
@@ -118,6 +188,14 @@
 - (UIEdgeInsets)collectionView:
 (UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {
     return UIEdgeInsetsMake(50, 20, 50, 20);
+}
+
+#pragma mark - Segue
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+    if ([segue.identifier isEqualToString:@"ShowFlickrPhoto"]) {
+        FlickrPhotoViewController *flickrPhotoViewController = segue.destinationViewController;
+        flickrPhotoViewController.flickrPhoto = sender;
+    }
 }
 
 @end
